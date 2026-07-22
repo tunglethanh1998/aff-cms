@@ -1,0 +1,27 @@
+{
+  "name": "aff-cms",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:api": "npm run dev -w @aff-cms/api",
+    "dev:web": "npm run dev -w @aff-cms/web",
+    "build": "npm run build --workspaces --if-present",
+    "build:api": "npm run build -w @aff-cms/api",
+    "build:web": "npm run build -w @aff-cms/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "prisma:generate": "npm run prisma:generate -w @aff-cms/api",
+    "prisma:migrate": "npm run prisma:migrate -w @aff-cms/api",
+    "prisma:seed": "npm run prisma:seed -w @aff-cms/api",
+    "prisma:studio": "npm run prisma:studio -w @aff-cms/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

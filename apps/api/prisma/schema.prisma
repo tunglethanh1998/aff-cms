@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+}
+
+enum DraftJobStatus {
+  PENDING
+  UPLOADING
+  SENT_TO_INBOX
+  FAILED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(ADMIN)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model TikTokAccount {
+  id              String    @id @default(cuid())
+  openId          String    @unique @map("open_id")
+  username        String?
+  displayName     String?   @map("display_name")
+  avatarUrl       String?   @map("avatar_url")
+  followerCount   BigInt    @default(0) @map("follower_count")
+  videoCount      BigInt    @default(0) @map("video_count")
+  likesCount      BigInt    @default(0) @map("likes_count")
+  viewCount       BigInt    @default(0) @map("view_count")
+  commentCount    BigInt    @default(0) @map("comment_count")
+  accessTokenEnc  String    @map("access_token_enc")
+  refreshTokenEnc String    @map("refresh_token_enc")
+  tokenExpiresAt  DateTime? @map("token_expires_at")
+  lastSyncedAt    DateTime? @map("last_synced_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  drafts TikTokDraftJob[]
+
+  @@map("tiktok_accounts")
+}
+
+model TikTokDraftJob {
+  id              String         @id @default(cuid())
+  accountId       String         @map("account_id")
+  caption         String?
+  localFileName   String         @map("local_file_name")
+  tiktokPublishId String?        @map("tiktok_publish_id")
+  status          DraftJobStatus @default(PENDING)
+  errorMessage    String?        @map("error_message")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  account TikTokAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@map("tiktok_draft_jobs")
+}
