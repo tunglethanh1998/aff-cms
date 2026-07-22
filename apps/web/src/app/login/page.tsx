@@ -31,52 +31,57 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#e8f1ff,_#f7f8fa_45%,_#ffffff)] px-6">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-6">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,#d9f0e6_0%,transparent_42%),radial-gradient(circle_at_80%_0%,#e7eef8_0%,transparent_40%)]" />
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md space-y-5 border border-zinc-200 bg-white/80 p-8 shadow-sm"
+        className="relative w-full max-w-md space-y-6 rounded-2xl border border-line bg-surface p-8 shadow-[0_20px_60px_-40px_rgba(18,20,23,0.45)]"
       >
         <div className="space-y-2">
-          <p className="text-xs font-semibold tracking-[0.2em] text-sky-800 uppercase">
+          <p className="text-[12px] font-semibold tracking-[0.22em] text-accent uppercase">
             Aff CMS
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight">Admin login</h1>
-          <p className="text-sm text-zinc-500">
-            Sign in with the seeded admin account to manage TikTok accounts.
+          <h1 className="text-3xl font-semibold tracking-tight">Sign in</h1>
+          <p className="text-sm text-muted">
+            Manage TikTok accounts, videos, and inbox drafts.
           </p>
         </div>
 
         <label className="block space-y-1.5 text-sm">
-          <span className="text-zinc-600">Email</span>
+          <span className="font-medium text-foreground/80">Email</span>
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-zinc-300 px-3 py-2 outline-none focus:border-sky-500"
+            className="w-full rounded-xl border border-line bg-background px-3.5 py-2.5 outline-none focus:border-accent"
           />
         </label>
 
         <label className="block space-y-1.5 text-sm">
-          <span className="text-zinc-600">Password</span>
+          <span className="font-medium text-foreground/80">Password</span>
           <input
             type="password"
             required
             minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-zinc-300 px-3 py-2 outline-none focus:border-sky-500"
+            className="w-full rounded-xl border border-line bg-background px-3.5 py-2.5 outline-none focus:border-accent"
           />
         </label>
 
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {error ? (
+          <p className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
+            {error}
+          </p>
+        ) : null}
 
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+          className="w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
         >
-          {submitting ? "Signing in…" : "Sign in"}
+          {submitting ? "Signing in…" : "Continue"}
         </button>
       </form>
     </div>

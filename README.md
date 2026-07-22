@@ -110,7 +110,8 @@ packages/
 | GET | `/tiktok/oauth/start` | JWT | Returns TikTok authorize URL |
 | GET | `/tiktok/oauth/callback` | no | OAuth callback (redirect to web) |
 | GET | `/tiktok/accounts` | JWT | List connected accounts |
-| POST | `/tiktok/accounts/:id/sync` | JWT | Refresh metrics from TikTok |
+| POST | `/tiktok/accounts/:id/sync` | JWT | Refresh metrics + video list from TikTok |
+| GET | `/tiktok/accounts/:id/videos` | JWT | Paginated synced videos (`page`, `limit`, `q`) |
 | DELETE | `/tiktok/accounts/:id` | JWT | Unlink account |
 | GET | `/tiktok/accounts/:id/drafts` | JWT | Draft job history |
 | POST | `/tiktok/accounts/:id/drafts` | JWT | multipart `video` (+ optional `caption`) → Inbox |
@@ -130,7 +131,9 @@ packages/
 ## Limits / notes
 
 - TikTok app must be approved for the scopes above; unaudited apps may only work with test users.
-- Views/comments are aggregated from paginated `video.list` (recent public videos; capped pages in API).
+- Videos are fetched via TikTok `video.list` (cursor + `max_count` only; no hashtag/mention filters), stored in Postgres, then paginated/searched in the CMS.
+- TikTok `video.query` only filters by known `video_ids` — not by text/hashtag. CMS search (`q`) runs on synced title/description.
+- Account-level views/comments/likes are aggregated from that synced video list.
 - Inbox draft does **not** publish publicly — the creator must complete posting in TikTok.
 - OAuth uses PKCE (`code_challenge` = hex SHA256 of `code_verifier`) plus an in-memory `state` (fine for local/single instance).
 - Access/refresh tokens are encrypted at rest with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`).

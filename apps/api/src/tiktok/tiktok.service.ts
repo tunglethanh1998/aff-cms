@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DraftJobStatus, TikTokAccount } from '@prisma/client';
+import { DraftJobStatus, TikTokAccount, TikTokVideo } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import { TokenCryptoService } from '../common/crypto/token-crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -124,24 +124,133 @@ export class TiktokService {
 
     const accessToken = await this.getValidAccessToken(account);
     const user = await this.tiktokApi.getUserInfo(accessToken);
-    const aggregates = await this.tiktokApi.listVideosAggregates(accessToken);
+    const videoList = await this.tiktokApi.listVideos(accessToken);
+    const syncedAt = new Date();
 
-    const updated = await this.prisma.tikTokAccount.update({
-      where: { id },
-      data: {
-        displayName: user.display_name ?? account.displayName,
-        username: user.username ?? account.username,
-        avatarUrl: user.avatar_url ?? account.avatarUrl,
-        followerCount: BigInt(user.follower_count ?? 0),
-        videoCount: BigInt(user.video_count ?? aggregates.listedVideoCount),
-        likesCount: BigInt(user.likes_count ?? aggregates.likeCount),
-        viewCount: BigInt(aggregates.viewCount),
-        commentCount: BigInt(aggregates.commentCount),
-        lastSyncedAt: new Date(),
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.tikTokAccount.update({
+        where: { id },
+        data: {
+          displayName: user.display_name ?? account.displayName,
+          username: user.username ?? account.username,
+          avatarUrl: user.avatar_url ?? account.avatarUrl,
+          followerCount: BigInt(user.follower_count ?? 0),
+          videoCount: BigInt(user.video_count ?? videoList.listedVideoCount),
+          likesCount: BigInt(user.likes_count ?? videoList.likeCount),
+          viewCount: BigInt(videoList.viewCount),
+          commentCount: BigInt(videoList.commentCount),
+          lastSyncedAt: syncedAt,
+        },
+      });
+
+      const seenIds = videoList.videos.map((video) => video.id);
+
+      for (const video of videoList.videos) {
+        await tx.tikTokVideo.upsert({
+          where: {
+            accountId_tiktokVideoId: {
+              accountId: id,
+              tiktokVideoId: video.id,
+            },
+          },
+          create: {
+            accountId: id,
+            tiktokVideoId: video.id,
+            title: video.title ?? null,
+            description: video.video_description ?? null,
+            coverUrl: video.cover_image_url ?? null,
+            shareUrl: video.share_url ?? null,
+            embedLink: video.embed_link ?? null,
+            durationSec: video.duration ?? null,
+            viewCount: BigInt(video.view_count ?? 0),
+            likeCount: BigInt(video.like_count ?? 0),
+            commentCount: BigInt(video.comment_count ?? 0),
+            shareCount: BigInt(video.share_count ?? 0),
+            publishedAt: video.create_time
+              ? new Date(video.create_time * 1000)
+              : null,
+            syncedAt,
+          },
+          update: {
+            title: video.title ?? null,
+            description: video.video_description ?? null,
+            coverUrl: video.cover_image_url ?? null,
+            shareUrl: video.share_url ?? null,
+            embedLink: video.embed_link ?? null,
+            durationSec: video.duration ?? null,
+            viewCount: BigInt(video.view_count ?? 0),
+            likeCount: BigInt(video.like_count ?? 0),
+            commentCount: BigInt(video.comment_count ?? 0),
+            shareCount: BigInt(video.share_count ?? 0),
+            publishedAt: video.create_time
+              ? new Date(video.create_time * 1000)
+              : null,
+            syncedAt,
+          },
+        });
+      }
+
+      if (seenIds.length > 0) {
+        await tx.tikTokVideo.deleteMany({
+          where: {
+            accountId: id,
+            tiktokVideoId: { notIn: seenIds },
+          },
+        });
+      } else {
+        await tx.tikTokVideo.deleteMany({ where: { accountId: id } });
+      }
     });
 
-    return this.toPublicAccount(updated);
+    return this.getAccount(id);
+  }
+
+  async listVideos(
+    accountId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      q?: string;
+    } = {},
+  ) {
+    await this.getAccount(accountId);
+
+    const page = Math.max(1, options.page ?? 1);
+    const limit = Math.min(50, Math.max(1, options.limit ?? 10));
+    const q = options.q?.trim();
+
+    const where = {
+      accountId,
+      ...(q
+        ? {
+            OR: [
+              { title: { contains: q, mode: 'insensitive' as const } },
+              { description: { contains: q, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+
+    const [total, videos] = await this.prisma.$transaction([
+      this.prisma.tikTokVideo.count({ where }),
+      this.prisma.tikTokVideo.findMany({
+        where,
+        orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return {
+      items: videos.map((video) => this.toPublicVideo(video)),
+      page,
+      limit,
+      total,
+      totalPages,
+      q: q || null,
+    };
   }
 
   async listDrafts(accountId: string) {
@@ -250,6 +359,26 @@ export class TiktokService {
       likesCount: account.likesCount.toString(),
       viewCount: account.viewCount.toString(),
       commentCount: account.commentCount.toString(),
+    };
+  }
+
+  private toPublicVideo(video: TikTokVideo) {
+    return {
+      id: video.id,
+      accountId: video.accountId,
+      tiktokVideoId: video.tiktokVideoId,
+      title: video.title,
+      description: video.description,
+      coverUrl: video.coverUrl,
+      shareUrl: video.shareUrl,
+      embedLink: video.embedLink,
+      durationSec: video.durationSec,
+      viewCount: video.viewCount.toString(),
+      likeCount: video.likeCount.toString(),
+      commentCount: video.commentCount.toString(),
+      shareCount: video.shareCount.toString(),
+      publishedAt: video.publishedAt,
+      syncedAt: video.syncedAt,
     };
   }
 

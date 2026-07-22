@@ -48,8 +48,35 @@ model TikTokAccount {
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   drafts TikTokDraftJob[]
+  videos TikTokVideo[]
 
   @@map("tiktok_accounts")
+}
+
+model TikTokVideo {
+  id           String   @id @default(cuid())
+  accountId    String   @map("account_id")
+  tiktokVideoId String  @map("tiktok_video_id")
+  title        String?
+  description  String?
+  coverUrl     String?  @map("cover_url")
+  shareUrl     String?  @map("share_url")
+  embedLink    String?  @map("embed_link")
+  durationSec  Int?     @map("duration_sec")
+  viewCount    BigInt   @default(0) @map("view_count")
+  likeCount    BigInt   @default(0) @map("like_count")
+  commentCount BigInt   @default(0) @map("comment_count")
+  shareCount   BigInt   @default(0) @map("share_count")
+  publishedAt  DateTime? @map("published_at")
+  syncedAt     DateTime @default(now()) @map("synced_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  account TikTokAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, tiktokVideoId])
+  @@index([accountId, publishedAt])
+  @@map("tiktok_videos")
 }
 
 model TikTokDraftJob {

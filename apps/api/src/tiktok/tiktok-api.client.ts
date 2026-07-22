@@ -36,8 +36,15 @@ type UserInfo = {
   video_count?: number;
 };
 
-type VideoItem = {
+export type TikTokVideoItem = {
   id: string;
+  title?: string;
+  video_description?: string;
+  cover_image_url?: string;
+  share_url?: string;
+  embed_link?: string;
+  duration?: number;
+  create_time?: number;
   view_count?: number;
   like_count?: number;
   comment_count?: number;
@@ -162,7 +169,8 @@ export class TiktokApiClient {
     return envelope.data.user;
   }
 
-  async listVideosAggregates(accessToken: string): Promise<{
+  async listVideos(accessToken: string): Promise<{
+    videos: TikTokVideoItem[];
     viewCount: number;
     commentCount: number;
     likeCount: number;
@@ -173,18 +181,32 @@ export class TiktokApiClient {
     let viewCount = 0;
     let commentCount = 0;
     let likeCount = 0;
-    let listedVideoCount = 0;
+    const videos: TikTokVideoItem[] = [];
     let pages = 0;
     const maxPages = 10;
+    const fields = [
+      'id',
+      'title',
+      'video_description',
+      'cover_image_url',
+      'share_url',
+      'embed_link',
+      'duration',
+      'create_time',
+      'view_count',
+      'like_count',
+      'comment_count',
+      'share_count',
+    ].join(',');
 
     while (hasMore && pages < maxPages) {
       const envelope = await this.requestJson<
         TikTokApiEnvelope<{
-          videos?: VideoItem[];
+          videos?: TikTokVideoItem[];
           cursor?: number;
           has_more?: boolean;
         }>
-      >('https://open.tiktokapis.com/v2/video/list/?fields=id,view_count,like_count,comment_count,share_count', {
+      >(`https://open.tiktokapis.com/v2/video/list/?fields=${fields}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -196,12 +218,12 @@ export class TiktokApiClient {
         }),
       });
 
-      const videos = envelope.data?.videos ?? [];
-      for (const video of videos) {
+      const pageVideos = envelope.data?.videos ?? [];
+      for (const video of pageVideos) {
+        videos.push(video);
         viewCount += video.view_count ?? 0;
         commentCount += video.comment_count ?? 0;
         likeCount += video.like_count ?? 0;
-        listedVideoCount += 1;
       }
 
       hasMore = Boolean(envelope.data?.has_more);
@@ -216,7 +238,13 @@ export class TiktokApiClient {
       }
     }
 
-    return { viewCount, commentCount, likeCount, listedVideoCount };
+    return {
+      videos,
+      viewCount,
+      commentCount,
+      likeCount,
+      listedVideoCount: videos.length,
+    };
   }
 
   async initInboxUpload(

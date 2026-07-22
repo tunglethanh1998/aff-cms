@@ -34,6 +34,24 @@ export type DraftJob = {
   updatedAt: string;
 };
 
+export type TikTokVideo = {
+  id: string;
+  accountId: string;
+  tiktokVideoId: string;
+  title: string | null;
+  description: string | null;
+  coverUrl: string | null;
+  shareUrl: string | null;
+  embedLink: string | null;
+  durationSec: number | null;
+  viewCount: string;
+  likeCount: string;
+  commentCount: string;
+  shareCount: string;
+  publishedAt: string | null;
+  syncedAt: string;
+};
+
 const TOKEN_KEY = "aff_cms_token";
 
 export function getToken(): string | null {
@@ -129,6 +147,30 @@ export function startTikTokOAuth() {
 
 export function listDrafts(accountId: string) {
   return request<DraftJob[]>(`/tiktok/accounts/${accountId}/drafts`);
+}
+
+export type PaginatedVideos = {
+  items: TikTokVideo[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  q: string | null;
+};
+
+export function listVideos(
+  accountId: string,
+  options: { page?: number; limit?: number; q?: string } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.page) params.set("page", String(options.page));
+  if (options.limit) params.set("limit", String(options.limit));
+  if (options.q?.trim()) params.set("q", options.q.trim());
+  const query = params.toString();
+
+  return request<PaginatedVideos>(
+    `/tiktok/accounts/${accountId}/videos${query ? `?${query}` : ""}`,
+  );
 }
 
 export function uploadDraft(

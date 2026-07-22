@@ -74,6 +74,22 @@ export class TiktokController {
     return this.tiktokService.syncAccount(id);
   }
 
+  @Get('accounts/:id/videos')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  listVideos(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.tiktokService.listVideos(id, {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      q,
+    });
+  }
+
   @Delete('accounts/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
