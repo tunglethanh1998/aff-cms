@@ -95,3 +95,39 @@ model TikTokDraftJob {
   @@index([accountId])
   @@map("tiktok_draft_jobs")
 }
+
+model AssetFolder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?  @map("parent_id")
+  path      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  parent   AssetFolder?  @relation("AssetFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children AssetFolder[] @relation("AssetFolderTree")
+  assets   Asset[]
+
+  @@index([parentId])
+  @@map("asset_folders")
+}
+
+model Asset {
+  id           String   @id @default(cuid())
+  folderId     String?  @map("folder_id")
+  filename     String
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    BigInt   @map("size_bytes")
+  width        Int?
+  height       Int?
+  s3Key        String   @unique @map("s3_key")
+  etag         String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  folder AssetFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@index([folderId, createdAt])
+  @@map("assets")
+}

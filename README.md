@@ -17,6 +17,7 @@ Monorepo for an Affiliate CMS: NestJS API, Next.js admin web, and PostgreSQL.
   - Aggregate views / comments / likes from `video.list`
 - **Draft video** — upload video and push to **TikTok Inbox** (`/v2/post/publish/inbox/video/init/`)
   - Creator finishes edit/post inside the TikTok app notification flow
+- **Assets (S3)** — image library with folders, API→S3 upload, search, pagination
 
 ## Prerequisites
 
@@ -24,6 +25,7 @@ Monorepo for an Affiliate CMS: NestJS API, Next.js admin web, and PostgreSQL.
 - Docker / Docker Compose
 - npm 10+
 - TikTok Developer App with products/scopes approved (see below)
+- AWS S3 bucket (or S3-compatible) for assets
 
 ## Quick start
 
@@ -115,6 +117,44 @@ packages/
 | DELETE | `/tiktok/accounts/:id` | JWT | Unlink account |
 | GET | `/tiktok/accounts/:id/drafts` | JWT | Draft job history |
 | POST | `/tiktok/accounts/:id/drafts` | JWT | multipart `video` (+ optional `caption`) → Inbox |
+| GET | `/assets/folders/tree` | JWT | Full folder tree |
+| GET | `/assets/folders` | JWT | List folders (`parentId` optional) |
+| POST | `/assets/folders` | JWT | Create folder |
+| POST | `/assets/folders/seed-defaults` | JWT | Create default folder set |
+| DELETE | `/assets/folders/:id` | JWT | Delete empty folder |
+| GET | `/assets` | JWT | Paginated images (`folderId`, `page`, `q`) |
+| POST | `/assets/upload` | JWT | Multipart image upload (API → S3) |
+| POST | `/assets/presign` | JWT | Optional: presigned S3 PUT URL |
+| POST | `/assets/confirm` | JWT | Optional: save metadata after browser PUT |
+| DELETE | `/assets/:id` | JWT | Delete S3 object + DB row |
+
+## Assets (S3)
+
+Images upload through the API (`POST /assets/upload`) then to S3 — same server-side pattern as Yosonavi, so **bucket CORS is not required** for CMS uploads.
+
+Recommended folder layout (also created by **Seed default folders**):
+
+```text
+assets/
+  products/      # product stills / packshots
+  creatives/     # ad creatives / banners
+  thumbnails/    # video covers / thumbs
+  brand/         # logos, watermarks
+  accounts/      # per-creator materials (subfolders by username later)
+```
+
+Env (`apps/api/.env`) — also accepts Yosonavi names (`AWS_S3_BUCKET_NAME`, `AWS_S3_*`, `AWS_CLOUDFRONT_PREFIX`):
+
+```env
+AWS_REGION=ap-southeast-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+S3_BUCKET=payload-bucket-yosinavi
+S3_KEY_PREFIX=assets
+S3_PUBLIC_BASE_URL=https://dcj8h3kzzo61z.cloudfront.net
+```
+
+Open CMS → **Assets** (`/assets`).
 
 ## Scripts
 

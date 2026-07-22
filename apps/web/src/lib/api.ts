@@ -192,3 +192,133 @@ export function formatCount(value: string | number | null | undefined) {
   const num = Number(value ?? 0);
   return new Intl.NumberFormat("en-US").format(Number.isFinite(num) ? num : 0);
 }
+
+export type AssetFolder = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  path: string;
+  childCount: number;
+  assetCount: number;
+  createdAt: string;
+};
+
+export type AssetFolderTreeNode = AssetFolder & {
+  children: AssetFolderTreeNode[];
+};
+
+export type AssetItem = {
+  id: string;
+  folderId: string | null;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: string;
+  width: number | null;
+  height: number | null;
+  s3Key: string;
+  etag: string | null;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PaginatedAssets = {
+  items: AssetItem[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  q: string | null;
+};
+
+export function listAssetFolders(parentId?: string | null) {
+  const params = new URLSearchParams();
+  if (parentId) params.set("parentId", parentId);
+  const query = params.toString();
+  return request<AssetFolder[]>(
+    `/assets/folders${query ? `?${query}` : ""}`,
+  );
+}
+
+export function getAssetFolderTree() {
+  return request<AssetFolderTreeNode[]>("/assets/folders/tree");
+}
+
+export function createAssetFolder(name: string, parentId?: string | null) {
+  return request<AssetFolder>("/assets/folders", {
+    method: "POST",
+    body: JSON.stringify({ name, parentId: parentId || undefined }),
+  });
+}
+
+export function seedDefaultAssetFolders() {
+  return request<AssetFolder[]>("/assets/folders/seed-defaults", {
+    method: "POST",
+  });
+}
+
+export function deleteAssetFolder(id: string) {
+  return request<{ ok: boolean }>(`/assets/folders/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function bulkDeleteAssetFolders(ids: string[]) {
+  return request<{
+    deleted: string[];
+    failed: { id: string; path?: string; reason: string }[];
+    deletedCount: number;
+    failedCount: number;
+  }>("/assets/folders/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export function listAssets(options: {
+  folderId?: string | null;
+  page?: number;
+  limit?: number;
+  q?: string;
+} = {}) {
+  const params = new URLSearchParams();
+  if (options.folderId) params.set("folderId", options.folderId);
+  if (options.page) params.set("page", String(options.page));
+  if (options.limit) params.set("limit", String(options.limit));
+  if (options.q?.trim()) params.set("q", options.q.trim());
+  const query = params.toString();
+  return request<PaginatedAssets>(`/assets${query ? `?${query}` : ""}`);
+}
+
+export function deleteAsset(id: string) {
+  return request<{ ok: boolean }>(`/assets/${id}`, { method: "DELETE" });
+}
+
+export function bulkDeleteAssets(ids: string[]) {
+  return request<{
+    deleted: string[];
+    failed: { id: string; reason: string }[];
+    deletedCount: number;
+    failedCount: number;
+  }>("/assets/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function uploadAssetImage(
+  file: File,
+  folderId?: string | null,
+) {
+  // Upload through API → S3 (same server-side path as Yosonavi),
+  // avoiding browser CORS / presigned SignatureDoesNotMatch.
+  const form = new FormData();
+  form.append("file", file);
+  if (folderId) form.append("folderId", folderId);
+
+  return request<AssetItem>("/assets/upload", {
+    method: "POST",
+    body: form,
+  });
+}

@@ -19,6 +19,7 @@ export function CmsShell({
   const router = useRouter();
   const pathname = usePathname();
   const onAccounts = pathname.startsWith("/accounts");
+  const onAssets = pathname.startsWith("/assets");
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -31,7 +32,7 @@ export function CmsShell({
             >
               Aff CMS
             </Link>
-            <nav className="hidden text-sm sm:block">
+            <nav className="hidden items-center gap-5 text-sm sm:flex">
               <Link
                 href="/accounts"
                 className={
@@ -41,6 +42,16 @@ export function CmsShell({
                 }
               >
                 Accounts
+              </Link>
+              <Link
+                href="/assets"
+                className={
+                  onAssets
+                    ? "font-medium text-foreground"
+                    : "text-muted hover:text-foreground"
+                }
+              >
+                Assets
               </Link>
             </nav>
           </div>
