@@ -38,3 +38,14 @@ a {
   transition: background-color 160ms ease, border-color 160ms ease,
     color 160ms ease, opacity 160ms ease;
 }
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+label[for],
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}

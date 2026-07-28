@@ -27,14 +27,9 @@ type SerializableAccount = Omit<
   commentCount: string;
 };
 
-type OAuthSession = {
-  createdAt: number;
-  codeVerifier: string;
-};
-
 @Injectable()
 export class TiktokService {
-  private readonly oauthStates = new Map<string, OAuthSession>();
+  private static readonly OAUTH_TTL_MS = 10 * 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -43,18 +38,18 @@ export class TiktokService {
     private readonly config: ConfigService,
   ) {}
 
-  createOAuthStart() {
+  async createOAuthStart() {
     const state = randomBytes(16).toString('hex');
     const codeVerifier = this.createCodeVerifier();
     const codeChallenge = createHash('sha256')
       .update(codeVerifier)
       .digest('hex');
 
-    this.oauthStates.set(state, {
-      createdAt: Date.now(),
-      codeVerifier,
+    const expiresAt = new Date(Date.now() + TiktokService.OAUTH_TTL_MS);
+    await this.prisma.oAuthState.create({
+      data: { state, codeVerifier, expiresAt },
     });
-    this.pruneStates();
+    await this.pruneExpiredOAuthStates();
 
     return {
       url: this.tiktokApi.getAuthorizeUrl(state, codeChallenge),
@@ -63,11 +58,16 @@ export class TiktokService {
   }
 
   async handleOAuthCallback(code: string, state: string) {
-    const session = this.oauthStates.get(state);
-    if (!session) {
+    const session = await this.prisma.oAuthState.findUnique({
+      where: { state },
+    });
+    if (!session || session.expiresAt.getTime() < Date.now()) {
+      if (session) {
+        await this.prisma.oAuthState.delete({ where: { state } }).catch(() => undefined);
+      }
       throw new UnauthorizedException('Invalid OAuth state');
     }
-    this.oauthStates.delete(state);
+    await this.prisma.oAuthState.delete({ where: { state } });
 
     const tokens = await this.tiktokApi.exchangeCode(code, session.codeVerifier);
     const account = await this.prisma.tikTokAccount.upsert({
@@ -261,6 +261,29 @@ export class TiktokService {
     });
   }
 
+  async deleteDraft(accountId: string, jobId: string) {
+    await this.getAccount(accountId);
+    const job = await this.prisma.tikTokDraftJob.findFirst({
+      where: { id: jobId, accountId },
+    });
+    if (!job) {
+      throw new NotFoundException('Draft job not found');
+    }
+    await this.prisma.tikTokDraftJob.delete({ where: { id: jobId } });
+    return { ok: true };
+  }
+
+  async bulkDeleteDrafts(accountId: string, ids?: string[]) {
+    await this.getAccount(accountId);
+    const where =
+      ids && ids.length > 0
+        ? { accountId, id: { in: Array.from(new Set(ids)) } }
+        : { accountId };
+
+    const result = await this.prisma.tikTokDraftJob.deleteMany({ where });
+    return { ok: true, deletedCount: result.count };
+  }
+
   async uploadDraft(
     accountId: string,
     file: Express.Multer.File,
@@ -394,13 +417,10 @@ export class TiktokService {
     return verifier;
   }
 
-  private pruneStates() {
-    const cutoff = Date.now() - 10 * 60 * 1000;
-    for (const [state, session] of this.oauthStates.entries()) {
-      if (session.createdAt < cutoff) {
-        this.oauthStates.delete(state);
-      }
-    }
+  private async pruneExpiredOAuthStates() {
+    await this.prisma.oAuthState.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
   }
 
   /** Deterministic helper for tests / debugging without exposing crypto internals */

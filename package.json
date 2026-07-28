@@ -18,6 +18,7 @@
     "db:logs": "docker compose logs -f postgres",
     "prisma:generate": "npm run prisma:generate -w @aff-cms/api",
     "prisma:migrate": "npm run prisma:migrate -w @aff-cms/api",
+    "prisma:deploy": "npm run prisma:deploy -w @aff-cms/api",
     "prisma:seed": "npm run prisma:seed -w @aff-cms/api",
     "prisma:studio": "npm run prisma:studio -w @aff-cms/api"
   },

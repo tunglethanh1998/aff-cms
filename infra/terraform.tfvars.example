@@ -1,0 +1,21 @@
+aws_region      = "ap-southeast-1"
+project_name    = "aff-cms"
+environment     = "prod"
+domain_name     = "lethanhtung.click"
+
+# aws route53 list-hosted-zones-by-name --dns-name lethanhtung.click
+route53_zone_id = "ZXXXXXXXXXXXXX"
+
+db_username = "aff_cms"
+db_password = "CHANGE_ME_STRONG_PASSWORD"
+
+jwt_secret           = "CHANGE_ME_LONG_RANDOM_STRING"
+token_encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+tiktok_client_key    = ""
+tiktok_client_secret = ""
+
+admin_email = "admin@lethanhtung.click"
+
+api_image_tag = "latest"
+web_image_tag = "latest"

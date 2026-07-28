@@ -17,7 +17,7 @@ Monorepo for an Affiliate CMS: NestJS API, Next.js admin web, and PostgreSQL.
   - Aggregate views / comments / likes from `video.list`
 - **Draft video** — upload video and push to **TikTok Inbox** (`/v2/post/publish/inbox/video/init/`)
   - Creator finishes edit/post inside the TikTok app notification flow
-- **Assets (S3)** — image library with folders, API→S3 upload, search, pagination
+- **Assets (S3)** — shared image library + per-account libraries, API→S3 upload, search, pagination
 
 ## Prerequisites
 
@@ -127,10 +127,17 @@ packages/
 | POST | `/assets/presign` | JWT | Optional: presigned S3 PUT URL |
 | POST | `/assets/confirm` | JWT | Optional: save metadata after browser PUT |
 | DELETE | `/assets/:id` | JWT | Delete S3 object + DB row |
+| GET | `/tiktok/accounts/:id/assets` | JWT | Account-scoped images |
+| GET | `/tiktok/accounts/:id/assets/folders/tree` | JWT | Account folder tree |
+| POST | `/tiktok/accounts/:id/assets/upload` | JWT | Upload to account library |
+| POST | `/tiktok/accounts/:id/assets/bulk-delete` | JWT | Bulk delete account images |
 
 ## Assets (S3)
 
-Images upload through the API (`POST /assets/upload`) then to S3 — same server-side pattern as Yosonavi, so **bucket CORS is not required** for CMS uploads.
+- **Shared** (nav **Assets** `/assets`): `accountId = null`
+- **Per account** (tab on `/accounts/[id]`): private library auto-created on first open
+
+Images upload through the API then to S3 — bucket CORS is not required for CMS uploads.
 
 Recommended folder layout (also created by **Seed default folders**):
 

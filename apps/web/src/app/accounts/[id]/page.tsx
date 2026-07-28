@@ -1,12 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+import { AccountAssetsPanel } from "@/components/account-assets-panel";
+import { AccountDailyProductsPanel } from "@/components/account-daily-products-panel";
+import { AccountBackgroundsPanel } from "@/components/account-backgrounds-panel";
+import { AccountPortraitsPanel } from "@/components/account-portraits-panel";
 import { CmsShell } from "@/components/cms-shell";
 import { RequireAuth } from "@/components/require-auth";
 import {
   DraftJob,
+  bulkDeleteDrafts,
+  deleteDraft,
   formatCount,
   getAccount,
   listDrafts,
@@ -19,7 +30,45 @@ import {
 import { formatDateTime } from "@/lib/datetime";
 import { mergeTags, splitTextEntities } from "@/lib/hashtags";
 
-type Tab = "videos" | "upload" | "drafts";
+type Tab = "videos" | "publishing" | "daily" | "library";
+type MediaTab = "assets" | "portraits" | "backgrounds";
+
+function resolveTab(value: string | null): Tab {
+  if (value === "videos" || value === "daily") return value;
+  if (value === "publishing" || value === "upload" || value === "drafts") {
+    return "publishing";
+  }
+  if (
+    value === "library" ||
+    value === "assets" ||
+    value === "portraits" ||
+    value === "backgrounds"
+  ) {
+    return "library";
+  }
+  return "videos";
+}
+
+function resolveMediaTab(
+  tabValue: string | null,
+  mediaValue: string | null,
+): MediaTab {
+  if (
+    mediaValue === "assets" ||
+    mediaValue === "portraits" ||
+    mediaValue === "backgrounds"
+  ) {
+    return mediaValue;
+  }
+  if (
+    tabValue === "assets" ||
+    tabValue === "portraits" ||
+    tabValue === "backgrounds"
+  ) {
+    return tabValue;
+  }
+  return "assets";
+}
 
 function formatDuration(seconds: number | null) {
   if (seconds == null) return "—";
@@ -36,12 +85,51 @@ function statusTone(status: DraftJob["status"]) {
 
 function AccountDetailContent() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const id = params.id;
+  const queryTab = searchParams.get("tab");
+  const queryMedia = searchParams.get("media");
+  const queryFolderId = searchParams.get("folderId");
 
   const [account, setAccount] = useState<TikTokAccount | null>(null);
   const [videos, setVideos] = useState<TikTokVideo[]>([]);
   const [drafts, setDrafts] = useState<DraftJob[]>([]);
-  const [tab, setTab] = useState<Tab>("videos");
+  const [tab, setTab] = useState<Tab>(() => resolveTab(queryTab));
+  const [mediaTab, setMediaTab] = useState<MediaTab>(() =>
+    resolveMediaTab(queryTab, queryMedia),
+  );
+
+  const selectTab = useCallback(
+    (next: Tab) => {
+      setTab(next);
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("tab", next);
+      if (next === "library") {
+        nextParams.set("media", mediaTab);
+      } else {
+        nextParams.delete("media");
+        nextParams.delete("folderId");
+      }
+      const qs = nextParams.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [mediaTab, pathname, router, searchParams],
+  );
+
+  const selectMediaTab = useCallback(
+    (next: MediaTab) => {
+      setTab("library");
+      setMediaTab(next);
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("tab", "library");
+      nextParams.set("media", next);
+      if (next !== "assets") nextParams.delete("folderId");
+      router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,6 +144,11 @@ function AccountDetailContent() {
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const pageSize = 10;
+
+  useEffect(() => {
+    setTab(resolveTab(queryTab));
+    setMediaTab(resolveMediaTab(queryTab, queryMedia));
+  }, [queryMedia, queryTab]);
 
   const loadVideos = useCallback(
     async (nextPage: number, q: string) => {
@@ -118,7 +211,7 @@ function AccountDetailContent() {
       setSearchQuery("");
       await loadVideos(1, "");
       setMessage("Synced metrics and videos from TikTok.");
-      setTab("videos");
+      selectTab("videos");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");
     } finally {
@@ -151,7 +244,7 @@ function AccountDetailContent() {
         setMessage(
           "Draft sent to TikTok Inbox. Finish editing in the TikTok app.",
         );
-        setTab("drafts");
+        selectTab("publishing");
       } else if (job.status === "FAILED") {
         setError(job.errorMessage || "Upload failed");
       }
@@ -161,6 +254,44 @@ function AccountDetailContent() {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function onDeleteDraft(jobId: string) {
+    if (
+      !confirm(
+        "Remove this draft job from CMS? This does not delete anything on TikTok.",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setMessage(null);
+    try {
+      await deleteDraft(id, jobId);
+      setDrafts((prev) => prev.filter((job) => job.id !== jobId));
+      setMessage("Draft job removed from CMS.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete draft failed");
+    }
+  }
+
+  async function onClearAllDrafts() {
+    if (
+      !confirm(
+        `Remove all ${drafts.length} draft job(s) from CMS? This does not delete anything on TikTok.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await bulkDeleteDrafts(id);
+      setDrafts([]);
+      setMessage(`Removed ${result.deletedCount} draft job(s) from CMS.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Clear drafts failed");
     }
   }
 
@@ -210,23 +341,23 @@ function AccountDetailContent() {
         </p>
       ) : (
         <div className="space-y-6">
-          <section className="rounded-2xl border border-line bg-surface p-5 text-center sm:p-6">
-            <div className="flex flex-col items-center gap-5">
-              <div className="flex flex-col items-center gap-3 sm:flex-row">
+          <section className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
                 {account.avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={account.avatarUrl}
                     alt=""
-                    className="h-16 w-16 rounded-full object-cover"
+                    className="h-14 w-14 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent">
                     TT
                   </div>
                 )}
-                <div>
-                  <h2 className="text-xl font-semibold tracking-tight">
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-semibold tracking-tight">
                     {name}
                   </h2>
                   <p className="text-sm text-muted">
@@ -234,7 +365,7 @@ function AccountDetailContent() {
                   </p>
                 </div>
               </div>
-              <dl className="grid w-full grid-cols-3 gap-x-6 gap-y-3 text-sm sm:grid-cols-5">
+              <dl className="grid grid-cols-3 gap-x-5 gap-y-3 text-sm sm:grid-cols-5 lg:min-w-[34rem]">
                 {[
                   ["Followers", account.followerCount],
                   ["Videos", account.videoCount],
@@ -264,28 +395,40 @@ function AccountDetailContent() {
             </p>
           ) : null}
 
-          <div className="flex gap-1 rounded-xl border border-line bg-surface p-1">
+          <nav
+            aria-label="Account sections"
+            className="grid grid-cols-2 gap-2 rounded-2xl border border-line bg-surface p-2 lg:grid-cols-4"
+          >
             {(
               [
-                ["videos", `Videos (${totalVideos})`],
-                ["upload", "Upload draft"],
-                ["drafts", `Draft jobs (${drafts.length})`],
+                ["videos", "Videos", `${totalVideos} synced`],
+                ["publishing", "Publishing", `${drafts.length} draft jobs`],
+                ["daily", "Daily products", "Product image sync"],
+                ["library", "Media library", "Assets & references"],
               ] as const
-            ).map(([key, label]) => (
+            ).map(([key, label, description]) => (
               <button
                 key={key}
                 type="button"
-                onClick={() => setTab(key)}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${
+                onClick={() => selectTab(key)}
+                aria-current={tab === key ? "page" : undefined}
+                className={`rounded-xl px-3 py-3 text-left ${
                   tab === key
-                    ? "bg-foreground text-white"
-                    : "text-muted hover:text-foreground"
+                    ? "bg-foreground text-white shadow-sm"
+                    : "text-foreground hover:bg-background"
                 }`}
               >
-                {label}
+                <span className="block text-sm font-semibold">{label}</span>
+                <span
+                  className={`mt-0.5 block text-xs ${
+                    tab === key ? "text-white/70" : "text-muted"
+                  }`}
+                >
+                  {description}
+                </span>
               </button>
             ))}
-          </div>
+          </nav>
 
           {tab === "videos" ? (
             <section className="overflow-hidden rounded-2xl border border-line bg-surface">
@@ -374,9 +517,7 @@ function AccountDetailContent() {
                         Boolean(descriptionText) &&
                         descriptionText !== titleText;
                       const displayTitle =
-                        titleText ||
-                        descriptionText ||
-                        video.tiktokVideoId;
+                        titleText || descriptionText || video.tiktokVideoId;
 
                       return (
                         <li
@@ -534,95 +675,186 @@ function AccountDetailContent() {
             </section>
           ) : null}
 
-          {tab === "upload" ? (
-            <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
-              <div className="max-w-xl space-y-5">
-                <div>
-                  <h3 className="text-lg font-semibold">Send draft to Inbox</h3>
-                  <p className="mt-1 text-sm text-muted">
-                    Upload a video to TikTok Inbox. The creator finishes the
-                    post in the TikTok app.
-                  </p>
+          {tab === "publishing" ? (
+            <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+              <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-accent uppercase">
+                      New upload
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold">
+                      Send draft to Inbox
+                    </h3>
+                    <p className="mt-1 text-sm text-muted">
+                      Upload a video here. The creator finishes editing and
+                      posting in the TikTok app.
+                    </p>
+                  </div>
+                  <form onSubmit={onUpload} className="space-y-4">
+                    <label className="block space-y-1.5 text-sm">
+                      <span className="font-medium">Video file</span>
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                        className="block w-full rounded-xl border border-line bg-background px-3 py-2.5 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent"
+                      />
+                    </label>
+                    <label className="block space-y-1.5 text-sm">
+                      <span className="font-medium">Note (optional)</span>
+                      <input
+                        type="text"
+                        value={caption}
+                        onChange={(e) => setCaption(e.target.value)}
+                        className="w-full rounded-xl border border-line bg-background px-3.5 py-2.5 outline-none focus:border-accent"
+                        placeholder="Internal CMS note"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={uploading || !file}
+                      className="w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+                    >
+                      {uploading ? "Uploading…" : "Send to TikTok Inbox"}
+                    </button>
+                  </form>
                 </div>
-                <form onSubmit={onUpload} className="space-y-4">
-                  <label className="block space-y-1.5 text-sm">
-                    <span className="font-medium">Video file</span>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                      className="block w-full rounded-xl border border-line bg-background px-3 py-2.5 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-accent-soft file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent"
-                    />
-                  </label>
-                  <label className="block space-y-1.5 text-sm">
-                    <span className="font-medium">Note (optional)</span>
-                    <input
-                      type="text"
-                      value={caption}
-                      onChange={(e) => setCaption(e.target.value)}
-                      className="w-full rounded-xl border border-line bg-background px-3.5 py-2.5 outline-none focus:border-accent"
-                      placeholder="Internal CMS note"
-                    />
-                  </label>
-                  <button
-                    type="submit"
-                    disabled={uploading || !file}
-                    className="rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
-                  >
-                    {uploading ? "Uploading…" : "Send to TikTok Inbox"}
-                  </button>
-                </form>
-              </div>
-            </section>
+              </section>
+
+              <section className="overflow-hidden rounded-2xl border border-line bg-surface">
+                <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+                  <div>
+                    <h3 className="font-semibold">Draft history</h3>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {drafts.length} jobs stored in CMS
+                    </p>
+                  </div>
+                  {drafts.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => void onClearAllDrafts()}
+                      className="rounded-lg border border-line px-3 py-1.5 text-sm text-danger"
+                    >
+                      Clear all
+                    </button>
+                  ) : null}
+                </div>
+
+                {drafts.length === 0 ? (
+                  <div className="px-6 py-12 text-center">
+                    <p className="font-medium">No draft jobs yet</p>
+                    <p className="mt-1 text-sm text-muted">
+                      New uploads will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="max-h-[36rem] overflow-y-auto">
+                    {drafts.map((job, index) => (
+                      <li
+                        key={job.id}
+                        className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between ${
+                          index < drafts.length - 1
+                            ? "border-b border-line"
+                            : ""
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">
+                            {job.localFileName}
+                          </p>
+                          <p className="mt-0.5 text-sm text-muted">
+                            {formatDateTime(job.createdAt)}
+                          </p>
+                          {job.caption ? (
+                            <p className="mt-1 text-sm text-muted">
+                              Note: {job.caption}
+                            </p>
+                          ) : null}
+                          {job.errorMessage ? (
+                            <p className="mt-1 text-sm text-danger">
+                              {job.errorMessage}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium tracking-wide uppercase ${statusTone(job.status)}`}
+                          >
+                            {job.status.replaceAll("_", " ")}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void onDeleteDraft(job.id)}
+                            className="rounded-lg border border-line px-2.5 py-1 text-xs text-danger"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
           ) : null}
 
-          {tab === "drafts" ? (
-            <section className="overflow-hidden rounded-2xl border border-line bg-surface">
-              {drafts.length === 0 ? (
-                <div className="px-6 py-14 text-center">
-                  <p className="font-medium">No draft jobs yet</p>
-                  <p className="mt-1 text-sm text-muted">
-                    Uploads will appear here after you send a draft.
+          {tab === "daily" ? (
+            <AccountDailyProductsPanel accountId={id} />
+          ) : null}
+
+          {tab === "library" ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="px-1">
+                  <h3 className="text-sm font-semibold">Media library</h3>
+                  <p className="text-xs text-muted">
+                    Product images and reusable visual references.
                   </p>
                 </div>
-              ) : (
-                <ul>
-                  {drafts.map((job, index) => (
-                    <li
-                      key={job.id}
-                      className={`flex flex-col items-center gap-2 px-5 py-4 text-center ${
-                        index < drafts.length - 1 ? "border-b border-line" : ""
+                <div
+                  className="grid grid-cols-3 gap-1 rounded-xl bg-background p-1"
+                  role="tablist"
+                  aria-label="Media library views"
+                >
+                  {(
+                    [
+                      ["assets", "Product assets"],
+                      ["portraits", "Portraits"],
+                      ["backgrounds", "Backgrounds"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={mediaTab === key}
+                      onClick={() => selectMediaTab(key)}
+                      className={`rounded-lg px-3 py-2 text-xs font-medium sm:text-sm ${
+                        mediaTab === key
+                          ? "bg-surface text-foreground shadow-sm"
+                          : "text-muted hover:text-foreground"
                       }`}
                     >
-                      <div className="min-w-0">
-                        <p className="font-medium">{job.localFileName}</p>
-                        <p className="mt-0.5 text-sm text-muted">
-                          {formatDateTime(job.createdAt)}
-                          {job.tiktokPublishId
-                            ? ` · ${job.tiktokPublishId}`
-                            : ""}
-                        </p>
-                        {job.caption ? (
-                          <p className="mt-1 text-sm text-muted">
-                            Note: {job.caption}
-                          </p>
-                        ) : null}
-                        {job.errorMessage ? (
-                          <p className="mt-1 text-sm text-danger">
-                            {job.errorMessage}
-                          </p>
-                        ) : null}
-                      </div>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-medium tracking-wide uppercase ${statusTone(job.status)}`}
-                      >
-                        {job.status.replaceAll("_", " ")}
-                      </span>
-                    </li>
+                      {label}
+                    </button>
                   ))}
-                </ul>
-              )}
-            </section>
+                </div>
+              </div>
+
+              {mediaTab === "assets" ? (
+                <AccountAssetsPanel
+                  accountId={id}
+                  initialFolderId={queryFolderId}
+                />
+              ) : null}
+              {mediaTab === "portraits" ? (
+                <AccountPortraitsPanel accountId={id} />
+              ) : null}
+              {mediaTab === "backgrounds" ? (
+                <AccountBackgroundsPanel accountId={id} />
+              ) : null}
+            </div>
           ) : null}
         </div>
       )}
@@ -630,13 +862,7 @@ function AccountDetailContent() {
   );
 }
 
-function Metric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center text-sm">
       <span className="mr-2 text-muted lg:hidden">{label}</span>
@@ -648,7 +874,11 @@ function Metric({
 export default function AccountDetailPage() {
   return (
     <RequireAuth>
-      <AccountDetailContent />
+      <Suspense
+        fallback={<div className="p-8 text-sm text-muted">Loading…</div>}
+      >
+        <AccountDetailContent />
+      </Suspense>
     </RequireAuth>
   );
 }

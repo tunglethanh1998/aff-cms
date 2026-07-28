@@ -104,6 +104,23 @@ export class TiktokController {
     return this.tiktokService.listDrafts(id);
   }
 
+  @Post('accounts/:id/drafts/bulk-delete')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  bulkDeleteDrafts(
+    @Param('id') id: string,
+    @Body() body: { ids?: string[] },
+  ) {
+    return this.tiktokService.bulkDeleteDrafts(id, body?.ids);
+  }
+
+  @Delete('accounts/:id/drafts/:jobId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  deleteDraft(@Param('id') id: string, @Param('jobId') jobId: string) {
+    return this.tiktokService.deleteDraft(id, jobId);
+  }
+
   @Post('accounts/:id/drafts')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)

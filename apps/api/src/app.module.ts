@@ -4,8 +4,10 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AssetsModule } from './assets/assets.module';
 import { AuthModule } from './auth/auth.module';
+import { DailyProductsModule } from './daily-products/daily-products.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ProductPromptsModule } from './product-prompts/product-prompts.module';
 import { TiktokModule } from './tiktok/tiktok.module';
 
 @Module({
@@ -18,6 +20,8 @@ import { TiktokModule } from './tiktok/tiktok.module';
     AuthModule,
     TiktokModule,
     AssetsModule,
+    DailyProductsModule,
+    ProductPromptsModule,
     HealthModule,
   ],
   controllers: [AppController],

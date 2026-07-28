@@ -7,12 +7,15 @@ import {
   Param,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Role } from '@prisma/client';
+import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -24,8 +27,15 @@ import {
   PresignAssetDto,
   BulkDeleteFoldersDto,
   BulkDeleteAssetsDto,
+  DownloadAssetsZipDto,
 } from './dto/assets.dto';
 
+function attachmentDisposition(filename: string) {
+  const ascii = filename.replace(/[^\x20-\x7E]+/g, '_') || 'download';
+  return `attachment; filename="${ascii.replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+/** Shared/global asset library (accountId = null). */
 @Controller('assets')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
@@ -34,17 +44,17 @@ export class AssetsController {
 
   @Get('folders/tree')
   getFolderTree() {
-    return this.assetsService.getFolderTree();
+    return this.assetsService.getFolderTree(null);
   }
 
   @Get('folders')
   listFolders(@Query('parentId') parentId?: string) {
-    return this.assetsService.listFolders(parentId || null);
+    return this.assetsService.listFolders(parentId || null, null);
   }
 
   @Post('folders')
   createFolder(@Body() dto: CreateFolderDto) {
-    return this.assetsService.createFolder(dto);
+    return this.assetsService.createFolder(dto, null);
   }
 
   @Post('folders/seed-defaults')
@@ -54,12 +64,12 @@ export class AssetsController {
 
   @Post('folders/bulk-delete')
   bulkDeleteFolders(@Body() dto: BulkDeleteFoldersDto) {
-    return this.assetsService.bulkDeleteFolders(dto);
+    return this.assetsService.bulkDeleteFolders(dto, null);
   }
 
   @Delete('folders/:id')
   deleteFolder(@Param('id') id: string) {
-    return this.assetsService.deleteFolder(id);
+    return this.assetsService.deleteFolder(id, null);
   }
 
   @Get()
@@ -74,12 +84,13 @@ export class AssetsController {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
       q,
+      accountId: null,
     });
   }
 
   @Post('presign')
   createPresign(@Body() dto: PresignAssetDto) {
-    return this.assetsService.createPresign(dto);
+    return this.assetsService.createPresign(dto, null);
   }
 
   @Post('upload')
@@ -96,21 +107,48 @@ export class AssetsController {
     if (!file) {
       throw new BadRequestException('file is required');
     }
-    return this.assetsService.uploadImage(file, folderId || undefined);
+    return this.assetsService.uploadImage(file, folderId || undefined, null);
   }
 
   @Post('confirm')
   confirmUpload(@Body() dto: ConfirmAssetDto) {
-    return this.assetsService.confirmUpload(dto);
+    return this.assetsService.confirmUpload(dto, null);
   }
 
   @Post('bulk-delete')
   bulkDeleteAssets(@Body() dto: BulkDeleteAssetsDto) {
-    return this.assetsService.bulkDeleteAssets(dto);
+    return this.assetsService.bulkDeleteAssets(dto, null);
+  }
+
+  @Post('download-zip')
+  async downloadZip(
+    @Body() dto: DownloadAssetsZipDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const zip = await this.assetsService.buildDownloadZip(dto, null);
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': attachmentDisposition(zip.filename),
+    });
+    return new StreamableFile(zip.stream);
+  }
+
+  @Get(':id/download')
+  async downloadAsset(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const file = await this.assetsService.getDownloadPayload(id, null);
+    res.set({
+      'Content-Type': file.mimeType,
+      'Content-Length': String(file.body.length),
+      'Content-Disposition': attachmentDisposition(file.filename),
+    });
+    return new StreamableFile(file.body);
   }
 
   @Delete(':id')
   deleteAsset(@Param('id') id: string) {
-    return this.assetsService.deleteAsset(id);
+    return this.assetsService.deleteAsset(id, null);
   }
 }

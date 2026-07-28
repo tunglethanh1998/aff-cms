@@ -19,7 +19,20 @@ export function CmsShell({
   const router = useRouter();
   const pathname = usePathname();
   const onAccounts = pathname.startsWith("/accounts");
+  const onDailyProducts = pathname.startsWith("/daily-products");
   const onAssets = pathname.startsWith("/assets");
+  const onPrompts = pathname.startsWith("/prompts");
+
+  const navItems = [
+    { href: "/accounts", label: "Accounts", active: onAccounts },
+    {
+      href: "/daily-products",
+      label: "Daily products",
+      active: onDailyProducts,
+    },
+    { href: "/assets", label: "Assets", active: onAssets },
+    { href: "/prompts", label: "Prompts", active: onPrompts },
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -32,27 +45,21 @@ export function CmsShell({
             >
               Aff CMS
             </Link>
-            <nav className="hidden items-center gap-5 text-sm sm:flex">
-              <Link
-                href="/accounts"
-                className={
-                  onAccounts
-                    ? "font-medium text-foreground"
-                    : "text-muted hover:text-foreground"
-                }
-              >
-                Accounts
-              </Link>
-              <Link
-                href="/assets"
-                className={
-                  onAssets
-                    ? "font-medium text-foreground"
-                    : "text-muted hover:text-foreground"
-                }
-              >
-                Assets
-              </Link>
+            <nav className="hidden items-center gap-1 text-sm sm:flex">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={item.active ? "page" : undefined}
+                  className={`rounded-lg px-3 py-2 ${
+                    item.active
+                      ? "bg-accent-soft font-medium text-accent"
+                      : "text-muted hover:bg-background hover:text-foreground"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
@@ -69,6 +76,22 @@ export function CmsShell({
             </button>
           </div>
         </div>
+        <nav className="mx-auto grid max-w-6xl grid-cols-4 gap-1 border-t border-line px-3 py-2 text-xs sm:hidden">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={item.active ? "page" : undefined}
+              className={`rounded-lg px-2 py-2 text-center ${
+                item.active
+                  ? "bg-accent-soft font-medium text-accent"
+                  : "text-muted"
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
       </header>
 
       <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-10">

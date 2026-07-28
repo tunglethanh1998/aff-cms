@@ -1,6 +1,14 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useSearchParams } from "next/navigation";
 import { CmsShell } from "@/components/cms-shell";
 import { RequireAuth } from "@/components/require-auth";
 import {
@@ -11,6 +19,8 @@ import {
   createAssetFolder,
   deleteAsset,
   deleteAssetFolder,
+  downloadAsset,
+  downloadAssetsZip,
   getAssetFolderTree,
   listAssets,
   seedDefaultAssetFolders,
@@ -56,6 +66,22 @@ function collectFolderIds(nodes: AssetFolderTreeNode[]): string[] {
     ids.push(node.id, ...collectFolderIds(node.children));
   }
   return ids;
+}
+
+function collectSubtreeIds(node: AssetFolderTreeNode): string[] {
+  return [node.id, ...collectFolderIds(node.children)];
+}
+
+function findFolderById(
+  nodes: AssetFolderTreeNode[],
+  id: string,
+): AssetFolderTreeNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const nested = findFolderById(node.children, id);
+    if (nested) return nested;
+  }
+  return null;
 }
 
 function FolderTree({
@@ -163,15 +189,19 @@ function FolderTree({
 export default function AssetsPage() {
   return (
     <RequireAuth>
-      <AssetsContent />
+      <Suspense fallback={<div className="p-8 text-sm text-muted">Loading…</div>}>
+        <AssetsContent />
+      </Suspense>
     </RequireAuth>
   );
 }
 
 function AssetsContent() {
+  const searchParams = useSearchParams();
+  const queryFolderId = searchParams.get("folderId");
   const [tree, setTree] = useState<AssetFolderTreeNode[]>([]);
   const [assets, setAssets] = useState<AssetItem[]>([]);
-  const [folderId, setFolderId] = useState<string | null>(null);
+  const [folderId, setFolderId] = useState<string | null>(queryFolderId);
   const [selectedPath, setSelectedPath] = useState<string>("/");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [checkedFolderIds, setCheckedFolderIds] = useState<Set<string>>(
@@ -190,8 +220,15 @@ function AssetsContent() {
   const [uploading, setUploading] = useState(false);
   const [deletingFolders, setDeletingFolders] = useState(false);
   const [deletingAssets, setDeletingAssets] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!queryFolderId) return;
+    setFolderId(queryFolderId);
+    setPage(1);
+  }, [queryFolderId]);
 
   const allFolderIds = useMemo(() => collectFolderIds(tree), [tree]);
   const allFoldersChecked =
@@ -220,6 +257,12 @@ function AssetsContent() {
       const auto = collectExpandIds(nextTree, folderId);
       return new Set([...prev, ...auto]);
     });
+    if (folderId) {
+      const selected = findFolderById(nextTree, folderId);
+      if (selected) {
+        setSelectedPath(`/${selected.path}`);
+      }
+    }
   }, [folderId]);
 
   const loadAssets = useCallback(async () => {
@@ -340,10 +383,14 @@ function AssetsContent() {
   }
 
   function onCheckFolder(id: string, checked: boolean) {
+    const node = findFolderById(tree, id);
+    const ids = node ? collectSubtreeIds(node) : [id];
     setCheckedFolderIds((prev) => {
       const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
+      for (const folderIdToToggle of ids) {
+        if (checked) next.add(folderIdToToggle);
+        else next.delete(folderIdToToggle);
+      }
       return next;
     });
   }
@@ -453,6 +500,36 @@ function AssetsContent() {
       );
     } finally {
       setDeletingAssets(false);
+    }
+  }
+
+  async function onDownloadAsset(assetId: string) {
+    setDownloading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await downloadAsset(assetId);
+      setMessage("Download started (original file).");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download failed");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function onBulkDownloadAssets() {
+    const ids = Array.from(checkedAssetIds);
+    if (ids.length === 0) return;
+    setDownloading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await downloadAssetsZip(ids);
+      setMessage(`Downloading zip of ${ids.length} original image(s).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Batch download failed");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -625,16 +702,30 @@ function AssetsContent() {
                   />
                   Select all on this page
                 </label>
-                <button
-                  type="button"
-                  disabled={!someAssetsChecked || deletingAssets}
-                  onClick={() => void onBulkDeleteAssets()}
-                  className="rounded-lg border border-line px-3 py-1.5 text-sm text-danger disabled:opacity-40"
-                >
-                  {deletingAssets
-                    ? "Deleting…"
-                    : `Delete selected (${checkedAssetIds.size})`}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      !someAssetsChecked || downloading || deletingAssets
+                    }
+                    onClick={() => void onBulkDownloadAssets()}
+                    className="rounded-lg border border-line px-3 py-1.5 text-sm text-muted hover:text-foreground disabled:opacity-40"
+                  >
+                    {downloading
+                      ? "Downloading…"
+                      : `Download selected (${checkedAssetIds.size})`}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!someAssetsChecked || deletingAssets}
+                    onClick={() => void onBulkDeleteAssets()}
+                    className="rounded-lg border border-line px-3 py-1.5 text-sm text-danger disabled:opacity-40"
+                  >
+                    {deletingAssets
+                      ? "Deleting…"
+                      : `Delete selected (${checkedAssetIds.size})`}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -660,12 +751,24 @@ function AssetsContent() {
                           className="h-3.5 w-3.5 accent-accent"
                         />
                       </label>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={asset.url}
-                        alt={asset.originalName}
-                        className="aspect-square w-full object-cover"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => onCheckAsset(asset.id, !isChecked)}
+                        aria-pressed={isChecked}
+                        aria-label={
+                          isChecked
+                            ? `Deselect ${asset.originalName}`
+                            : `Select ${asset.originalName}`
+                        }
+                        className="block w-full cursor-pointer"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={asset.url}
+                          alt={asset.originalName}
+                          className="aspect-square w-full object-cover"
+                        />
+                      </button>
                       <div className="space-y-1 p-2">
                         <p className="truncate text-xs font-medium">
                           {asset.originalName}
@@ -674,7 +777,7 @@ function AssetsContent() {
                           {formatBytes(asset.sizeBytes)} ·{" "}
                           {formatDateTime(asset.createdAt)}
                         </p>
-                        <div className="flex justify-center gap-2 pt-1">
+                        <div className="flex flex-wrap justify-center gap-2 pt-1">
                           <a
                             href={asset.url}
                             target="_blank"
@@ -683,6 +786,14 @@ function AssetsContent() {
                           >
                             Open
                           </a>
+                          <button
+                            type="button"
+                            disabled={downloading}
+                            onClick={() => void onDownloadAsset(asset.id)}
+                            className="text-xs text-muted hover:text-foreground disabled:opacity-40"
+                          >
+                            Download
+                          </button>
                           <button
                             type="button"
                             onClick={async () => {

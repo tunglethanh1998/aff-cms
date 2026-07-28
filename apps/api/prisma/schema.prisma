@@ -18,6 +18,13 @@ enum DraftJobStatus {
   FAILED
 }
 
+enum DailyProductStatus {
+  PENDING
+  SYNCING
+  READY
+  FAILED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -27,6 +34,17 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+/// Short-lived TikTok OAuth PKCE state (shared across ECS tasks).
+model OAuthState {
+  state        String   @id
+  codeVerifier String   @map("code_verifier")
+  createdAt    DateTime @default(now()) @map("created_at")
+  expiresAt    DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("oauth_states")
 }
 
 model TikTokAccount {
@@ -47,8 +65,11 @@ model TikTokAccount {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  drafts TikTokDraftJob[]
-  videos TikTokVideo[]
+  drafts        TikTokDraftJob[]
+  videos        TikTokVideo[]
+  assetFolders  AssetFolder[]
+  assets        Asset[]
+  dailyProducts DailyProduct[]
 
   @@map("tiktok_accounts")
 }
@@ -97,23 +118,69 @@ model TikTokDraftJob {
 }
 
 model AssetFolder {
+  id                String   @id @default(cuid())
+  accountId         String?  @map("account_id")
+  name              String
+  parentId          String?  @map("parent_id")
+  path              String   @unique
+  portraitAssetId   String?  @map("portrait_asset_id")
+  backgroundAssetId String?  @map("background_asset_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  account         TikTokAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  parent          AssetFolder?   @relation("AssetFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children        AssetFolder[]  @relation("AssetFolderTree")
+  assets          Asset[]
+  dailyProducts   DailyProduct[]
+  portraitAsset   Asset?         @relation("FolderPortrait", fields: [portraitAssetId], references: [id], onDelete: SetNull)
+  backgroundAsset Asset?         @relation("FolderBackground", fields: [backgroundAssetId], references: [id], onDelete: SetNull)
+
+  @@index([parentId])
+  @@index([accountId, parentId])
+  @@index([portraitAssetId])
+  @@index([backgroundAssetId])
+  @@map("asset_folders")
+}
+
+model DailyProduct {
+  id           String             @id @default(cuid())
+  accountId    String             @map("account_id")
+  date         DateTime           @db.Date
+  slot         Int
+  productUrl   String             @map("product_url")
+  title        String?
+  folderId     String             @map("folder_id")
+  status       DailyProductStatus @default(PENDING)
+  errorMessage String?            @map("error_message")
+  imageCount   Int                @default(0) @map("image_count")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  account TikTokAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  folder  AssetFolder   @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, date, slot])
+  @@index([accountId, date])
+  @@map("daily_products")
+}
+
+model ProductPrompt {
   id        String   @id @default(cuid())
   name      String
-  parentId  String?  @map("parent_id")
-  path      String   @unique
+  category  String
+  content   String   @db.Text
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  parent   AssetFolder?  @relation("AssetFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children AssetFolder[] @relation("AssetFolderTree")
-  assets   Asset[]
-
-  @@index([parentId])
-  @@map("asset_folders")
+  @@unique([category, name])
+  @@index([category, updatedAt])
+  @@map("product_prompts")
 }
 
 model Asset {
   id           String   @id @default(cuid())
+  accountId    String?  @map("account_id")
   folderId     String?  @map("folder_id")
   filename     String
   originalName String   @map("original_name")
@@ -126,8 +193,12 @@ model Asset {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  folder AssetFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  account TikTokAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  folder  AssetFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  foldersUsingAsPortrait   AssetFolder[] @relation("FolderPortrait")
+  foldersUsingAsBackground AssetFolder[] @relation("FolderBackground")
 
   @@index([folderId, createdAt])
+  @@index([accountId, createdAt])
   @@map("assets")
 }

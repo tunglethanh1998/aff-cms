@@ -7,6 +7,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateFolderDto {
@@ -88,4 +89,24 @@ export class BulkDeleteAssetsDto {
   @ArrayMinSize(1)
   @IsString({ each: true })
   ids!: string[];
+}
+
+export class DownloadAssetsZipDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  ids!: string[];
+}
+
+export class UpdateFolderCompanionsDto {
+  /** Set asset id, or null to clear. Omit to leave unchanged. */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  portraitAssetId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  backgroundAssetId?: string | null;
 }

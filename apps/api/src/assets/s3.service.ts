@@ -1,11 +1,13 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Readable } from 'stream';
 
 @Injectable()
 export class S3Service {
@@ -48,10 +50,15 @@ export class S3Service {
       this.config.get<string>('AWS_S3_GATEWAY') ||
       undefined;
 
-    if (this.bucket && accessKeyId && secretAccessKey) {
+    if (this.bucket) {
+      // Explicit keys for local/dev; otherwise use default chain (ECS task role).
+      const credentials =
+        accessKeyId && secretAccessKey
+          ? { accessKeyId, secretAccessKey }
+          : undefined;
       this.client = new S3Client({
         region: this.region,
-        credentials: { accessKeyId, secretAccessKey },
+        ...(credentials ? { credentials } : {}),
         // Newer AWS SDK injects checksums into presigned PUTs; browser uploads
         // cannot satisfy them (SignatureDoesNotMatch).
         requestChecksumCalculation: 'WHEN_REQUIRED',
@@ -72,7 +79,7 @@ export class S3Service {
   assertConfigured() {
     if (!this.client || !this.bucket) {
       throw new ServiceUnavailableException(
-        'S3 is not configured. Set S3_BUCKET / AWS_S3_BUCKET_NAME and AWS credentials.',
+        'S3 is not configured. Set S3_BUCKET / AWS_S3_BUCKET_NAME (credentials via keys or IAM role).',
       );
     }
   }
@@ -139,6 +146,39 @@ export class S3Service {
         Key: key,
       }),
     );
+  }
+
+  /** Fetch original object bytes (no transform / re-encode). */
+  async getObject(key: string): Promise<{
+    body: Buffer;
+    contentType: string | undefined;
+    contentLength: number | undefined;
+  }> {
+    this.assertConfigured();
+    const result = await this.client!.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      }),
+    );
+    const stream = result.Body;
+    if (!stream) {
+      throw new ServiceUnavailableException('Empty S3 object body');
+    }
+    const body = await this.streamToBuffer(stream as Readable);
+    return {
+      body,
+      contentType: result.ContentType,
+      contentLength: result.ContentLength,
+    };
+  }
+
+  private async streamToBuffer(stream: Readable): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
   }
 
   getPublicUrl(key: string) {
