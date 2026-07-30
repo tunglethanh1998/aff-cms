@@ -84,7 +84,12 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: true
+          # Match ECS task runtime (X86_64). Wrong arch → CannotPullContainerError.
           platforms: linux/amd64
+          # Buildx default provenance/SBOM creates an Image Index + tiny attestation
+          # artifact in ECR (3 rows per push). Disable so ECR shows one tagged image.
+          provenance: false
+          sbom: false
           build-args: |
             NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
           tags: |

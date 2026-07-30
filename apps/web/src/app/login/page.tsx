@@ -1,8 +1,27 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+
+const LOGIN_HIGHLIGHTS = [
+  {
+    src: "/images/login-accounts.png",
+    alt: "Connected TikTok accounts",
+    label: "Accounts",
+  },
+  {
+    src: "/images/login-create.png",
+    alt: "Create affiliate product content",
+    label: "Create",
+  },
+  {
+    src: "/images/login-analytics.png",
+    alt: "Track affiliate performance",
+    label: "Insights",
+  },
+] as const;
 
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
@@ -46,6 +65,27 @@ export default function LoginPage() {
             Manage TikTok accounts, videos, and inbox drafts.
           </p>
         </div>
+
+        <ul className="grid grid-cols-3 gap-2.5">
+          {LOGIN_HIGHLIGHTS.map((item) => (
+            <li
+              key={item.src}
+              className="overflow-hidden rounded-xl border border-line bg-background"
+            >
+              <Image
+                src={item.src}
+                alt={item.alt}
+                width={240}
+                height={240}
+                className="aspect-square h-auto w-full object-cover"
+                priority
+              />
+              <p className="px-2 py-1.5 text-center text-[11px] font-medium text-muted">
+                {item.label}
+              </p>
+            </li>
+          ))}
+        </ul>
 
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium text-foreground/80">Email</span>
