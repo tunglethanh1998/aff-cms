@@ -82,11 +82,12 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           push: true
+          platforms: linux/amd64
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
             ${{ steps.meta.outputs.image }}:latest
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,mode=max,scope=api
+          cache-from: type=gha,scope=api-amd64
+          cache-to: type=gha,mode=max,scope=api-amd64
 
       - name: Force new ECS deployment
         run: |
@@ -97,10 +98,3 @@ jobs:
             --force-new-deployment \
             --query 'service.serviceName' \
             --output text
-
-      - name: Wait for API service to stabilize
-        run: |
-          set -euo pipefail
-          aws ecs wait services-stable \
-            --cluster "${ECS_CLUSTER}" \
-            --services "${ECS_API_SERVICE}"

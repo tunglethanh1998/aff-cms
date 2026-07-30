@@ -84,13 +84,14 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: true
+          platforms: linux/amd64
           build-args: |
             NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
             ${{ steps.meta.outputs.image }}:latest
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
+          cache-from: type=gha,scope=web-amd64
+          cache-to: type=gha,mode=max,scope=web-amd64
 
       - name: Force new ECS deployment
         run: |
@@ -101,10 +102,3 @@ jobs:
             --force-new-deployment \
             --query 'service.serviceName' \
             --output text
-
-      - name: Wait for Web service to stabilize
-        run: |
-          set -euo pipefail
-          aws ecs wait services-stable \
-            --cluster "${ECS_CLUSTER}" \
-            --services "${ECS_WEB_SERVICE}"

@@ -39,7 +39,7 @@ export default function LoginPage() {
       >
         <div className="space-y-2">
           <p className="text-[12px] font-semibold tracking-[0.22em] text-accent uppercase">
-            Aff CMS
+            Aff TikTok
           </p>
           <h1 className="text-3xl font-semibold tracking-tight">Sign in</h1>
           <p className="text-sm text-muted">
