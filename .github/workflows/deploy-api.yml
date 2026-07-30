@@ -1,0 +1,106 @@
+# Deploy Aff CMS API: build → push ECR → force ECS new deployment.
+#
+# Uses GitHub Environment: staging
+# (Settings → Environments → staging → Environment secrets / variables)
+#
+# Required secrets:
+#   AWS_ACCESS_KEY_ID
+#   AWS_SECRET_ACCESS_KEY
+#
+# Required variables:
+#   AWS_REGION            e.g. ap-southeast-1
+#   ECR_API_REPOSITORY    e.g. aff-cms-api
+#   ECS_CLUSTER           e.g. aff-cms
+#   ECS_API_SERVICE       e.g. aff-cms-api
+#
+# IAM: ecr:GetAuthorizationToken, ECR push on API repo,
+# ecs:UpdateService + ecs:DescribeServices on the API service.
+
+name: Deploy API
+
+on:
+  push:
+    branches: [staging]
+    paths:
+      - "apps/api/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-api-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_API_REPOSITORY: ${{ vars.ECR_API_REPOSITORY }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE }}
+
+jobs:
+  deploy:
+    name: Build, push, and deploy API
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          REGISTRY="${{ steps.ecr-login.outputs.registry }}"
+          echo "tag=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "image=${REGISTRY}/${ECR_API_REPOSITORY}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Force new ECS deployment
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_API_SERVICE}" \
+            --force-new-deployment \
+            --query 'service.serviceName' \
+            --output text
+
+      - name: Wait for API service to stabilize
+        run: |
+          set -euo pipefail
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_API_SERVICE}"

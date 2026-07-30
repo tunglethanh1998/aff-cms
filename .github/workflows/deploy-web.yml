@@ -1,0 +1,110 @@
+# Deploy Aff CMS Web: build → push ECR → force ECS new deployment.
+#
+# Uses GitHub Environment: staging
+# (Settings → Environments → staging → Environment secrets / variables)
+#
+# Required secrets:
+#   AWS_ACCESS_KEY_ID
+#   AWS_SECRET_ACCESS_KEY
+#
+# Required variables:
+#   AWS_REGION            e.g. ap-southeast-1
+#   ECR_WEB_REPOSITORY    e.g. aff-cms-web
+#   ECS_CLUSTER           e.g. aff-cms
+#   ECS_WEB_SERVICE       e.g. aff-cms-web
+#   NEXT_PUBLIC_API_URL   e.g. https://api.lethanhtung.click
+#
+# IAM: ecr:GetAuthorizationToken, ECR push on Web repo,
+# ecs:UpdateService + ecs:DescribeServices on the Web service.
+
+name: Deploy Web
+
+on:
+  push:
+    branches: [staging]
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_WEB_REPOSITORY: ${{ vars.ECR_WEB_REPOSITORY }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_WEB_SERVICE: ${{ vars.ECS_WEB_SERVICE }}
+  NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+
+jobs:
+  deploy:
+    name: Build, push, and deploy Web
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          REGISTRY="${{ steps.ecr-login.outputs.registry }}"
+          echo "tag=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "image=${REGISTRY}/${ECR_WEB_REPOSITORY}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: Force new ECS deployment
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_WEB_SERVICE}" \
+            --force-new-deployment \
+            --query 'service.serviceName' \
+            --output text
+
+      - name: Wait for Web service to stabilize
+        run: |
+          set -euo pipefail
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_WEB_SERVICE}"
