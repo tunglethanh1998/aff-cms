@@ -3,21 +3,22 @@
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { assetUrl } from "@/lib/assets";
 import { useAuth } from "@/lib/auth-context";
 
 const LOGIN_HIGHLIGHTS = [
   {
-    src: "/images/login-accounts.png",
+    src: assetUrl("/images/login-accounts.png"),
     alt: "Connected TikTok accounts",
     label: "Accounts",
   },
   {
-    src: "/images/login-create.png",
+    src: assetUrl("/images/login-create.png"),
     alt: "Create affiliate product content",
     label: "Create",
   },
   {
-    src: "/images/login-analytics.png",
+    src: assetUrl("/images/login-analytics.png"),
     alt: "Track affiliate performance",
     label: "Insights",
   },
@@ -74,8 +75,11 @@ export default function LoginPage() {
             <div
               role="img"
               aria-label="Login background image cache test"
-              title="/images/login-create.png via background-image"
-              className="h-24 w-full rounded-xl border border-line bg-cover bg-center bg-[url('/images/login-create.png')]"
+              title={`${assetUrl("/images/login-create.png")} via background-image`}
+              className="h-24 w-full rounded-xl border border-line bg-cover bg-center"
+              style={{
+                backgroundImage: `url('${assetUrl("/images/login-create.png")}')`,
+              }}
             />
           </div>
 

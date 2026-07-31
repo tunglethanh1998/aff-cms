@@ -16,7 +16,9 @@ RUN npm ci -w @aff-cms/web --include-workspace-root
 
 FROM base AS builder
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ARG NEXT_PUBLIC_ASSET_VERSION=dev
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_ASSET_VERSION=$NEXT_PUBLIC_ASSET_VERSION
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./

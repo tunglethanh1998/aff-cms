@@ -14,6 +14,8 @@
 #   ECS_WEB_SERVICE       e.g. aff-cms-web
 #   NEXT_PUBLIC_API_URL   e.g. https://api.lethanhtung.click
 #
+# NEXT_PUBLIC_ASSET_VERSION is set automatically from the git sha (cache bust).
+#
 # IAM: ecr:GetAuthorizationToken, ECR push on Web repo,
 # ecs:UpdateService + ecs:DescribeServices on the Web service.
 
@@ -92,6 +94,7 @@ jobs:
           sbom: false
           build-args: |
             NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_ASSET_VERSION=${{ steps.meta.outputs.tag }}
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
             ${{ steps.meta.outputs.image }}:latest
