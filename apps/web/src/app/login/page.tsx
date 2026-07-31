@@ -69,6 +69,18 @@ export default function LoginPage() {
         <div className="space-y-3">
           <div className="space-y-1.5">
             <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+              CSS background-image (1)
+            </p>
+            <div
+              role="img"
+              aria-label="Login background image cache test"
+              title="/images/login-create.png via background-image"
+              className="h-24 w-full rounded-xl border border-line bg-cover bg-center bg-[url('/images/login-create.png')]"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">
               next/image (3)
             </p>
             <ul className="grid grid-cols-3 gap-2.5">
