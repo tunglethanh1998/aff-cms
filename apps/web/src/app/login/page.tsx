@@ -82,6 +82,7 @@ export default function LoginPage() {
                     alt={item.alt}
                     width={240}
                     height={240}
+                    quality={1}
                     className="aspect-square h-auto w-full object-cover"
                     priority
                   />
