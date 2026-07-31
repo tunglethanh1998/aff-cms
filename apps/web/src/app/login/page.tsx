@@ -66,26 +66,59 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <ul className="grid grid-cols-3 gap-2.5">
-          {LOGIN_HIGHLIGHTS.map((item) => (
-            <li
-              key={item.src}
-              className="overflow-hidden rounded-xl border border-line bg-background"
-            >
-              <Image
-                src={item.src}
-                alt={item.alt}
-                width={240}
-                height={240}
-                className="aspect-square h-auto w-full object-cover"
-                priority
-              />
-              <p className="px-2 py-1.5 text-center text-[11px] font-medium text-muted">
-                {item.label}
-              </p>
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+              next/image (3)
+            </p>
+            <ul className="grid grid-cols-3 gap-2.5">
+              {LOGIN_HIGHLIGHTS.map((item) => (
+                <li
+                  key={`next-${item.src}`}
+                  className="overflow-hidden rounded-xl border border-line bg-background"
+                >
+                  <Image
+                    src={item.src}
+                    alt={item.alt}
+                    width={240}
+                    height={240}
+                    className="aspect-square h-auto w-full object-cover"
+                    priority
+                  />
+                  <p className="px-2 py-1.5 text-center text-[11px] font-medium text-muted">
+                    {item.label}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold tracking-wide text-muted uppercase">
+              {'<img>'} native (3)
+            </p>
+            <ul className="grid grid-cols-3 gap-2.5">
+              {LOGIN_HIGHLIGHTS.map((item) => (
+                <li
+                  key={`img-${item.src}`}
+                  className="overflow-hidden rounded-xl border border-line bg-background"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- intentional A/B vs next/image */}
+                  <img
+                    src={item.src}
+                    alt={item.alt}
+                    width={240}
+                    height={240}
+                    className="aspect-square h-auto w-full object-cover"
+                  />
+                  <p className="px-2 py-1.5 text-center text-[11px] font-medium text-muted">
+                    {item.label}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
 
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium text-foreground/80">Email</span>
